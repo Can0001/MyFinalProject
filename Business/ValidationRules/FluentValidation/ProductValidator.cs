@@ -1,4 +1,4 @@
-﻿using Entities.Concrete;
+﻿ using Entities.Concrete;
 using FluentValidation;
 using System;
 using System.Collections.Generic;
@@ -26,3 +26,5 @@ namespace Business.ValidationRules.FluentValidation
         }
     }
 }
+
+//53:56

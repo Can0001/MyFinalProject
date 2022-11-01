@@ -3,6 +3,9 @@ using Business.BusinessAspects.Autofac;
 using Business.CCS;
 using Business.Constants;
 using Business.ValidationRules.FluentValidation;
+using Core.Aspects.Autofac.Caching;
+using Core.Aspects.Autofac.Performance;
+using Core.Aspects.Autofac.Transaction;
 using Core.Aspects.Autofac.Validation;
 using Core.CrossCuttingConcerns.Validation;
 using Core.Utilities.Business;
@@ -34,10 +37,20 @@ namespace Business.Concrete
         //Claim=iddia etmek demek
         [SecuredOperation("product.add,admin")]//product.add veya admin den birisine sahip olması  demektir
         [ValidationAspect(typeof(ProductValidator))]
+        [CacheRemoveAspect("IProductService.Get")]
         public IResult Add(Product product)
         {
             //Loglama Kodları çalışıcak
+            IResult result = BusinessRules.Run(CheckIfProductNameExists(product.ProductName),
+                 CheckIfProductCountOfCategoryCorrect(product.CategoryId),
+                 CheckIfCategoryLimitExcede());
 
+            if (result != null)//Kurala uymayan bir durum oluşmuşsa demek 
+            {
+                return result;
+            }
+            _productDal.Add(product);
+            return new SuccessResult(Messages.ProductAdded);
 
             /*--------GEREK YOK------------------
              ProductValidator içine yazılmıştır
@@ -59,32 +72,21 @@ namespace Business.Concrete
             transaction
             yetkilendirmeler
             */
-            
-           IResult result = BusinessRules.Run(CheckIfProductNameExists(product.ProductName),
-                CheckIfProductCountOfCategoryCorrect(product.CategoryId),
-                CheckIfCategoryLimitExcede());
-
-            if (result!=null)//Kurala uymayan bir durum oluşmuşsa demek 
-            {
-                return result;
-            }
-            _productDal.Add(product);
-            return new SuccessResult(Messages.ProductAdded); 
-
 
             //--------------GEREK YOK---------------------------
             //if (CheckIfProductCountOfCategoryCorrect(product.CategoryId).Success)&&CheckIfProductNameExists(product.ProductName).Success bu şekilde de yazılır
             //{
             //    if (CheckIfProductNameExists(product.ProductName).Success)
             //    {
-                    
+
             //    }
-                
+
             //}
             //return new ErrorResult();
             //---------------------------------------------------------
         }
 
+        [CacheAspect] //key,value
         public IDataResult<List<Product>> GetAll()
         {
             //iş kodları
@@ -102,6 +104,8 @@ namespace Business.Concrete
             return new SuccessDataResult<List<Product>>(_productDal.GetAll(p=>p.CategoryId==id),Messages.ProductListed);
         }
 
+        [CacheAspect]
+        [PerformanceAspect(5)]
         public IDataResult<Product> GetById(int productId)
         {
             return new SuccessDataResult<Product>(_productDal.Get(p => p.ProductId == productId),Messages.ProductListed);
@@ -122,6 +126,8 @@ namespace Business.Concrete
         }
 
         [ValidationAspect(typeof(ProductValidator))]
+        //[CacheRemoveAspect("Get")]Bellekteki tüm getleri içerisinde get olan tüm keyleri iptal et demek dolayısıyla sen ürünü güncellemişken her yerdeki cache silersin 
+        [CacheRemoveAspect("IProductService.Get")]//IProductService'deki tüm getleri sil demek
         public IResult Update(Product product)
         {
             var result = _productDal.GetAll(p => p.CategoryId == product.CategoryId).Count;
@@ -129,7 +135,7 @@ namespace Business.Concrete
             {
                 return new ErrorResult(Messages.ProductCountOfCategoryError);
             }
-            return new SuccessResult();
+            return new SuccessResult(Messages.ProductUpdated);
         }
 
         private IResult CheckIfProductCountOfCategoryCorrect(int categoryId)//Product product olsa bile olur
@@ -166,6 +172,14 @@ namespace Business.Concrete
                 return new ErrorResult(Messages.CategoryLimitExcede);
             }
             return new SuccessResult();
+        }
+
+        [TransactionScopeAspect]
+        public IResult AddTransactionalTest(Product product)
+        {
+            _productDal.Update(product);
+            _productDal.Add(product);
+            return new SuccessResult(Messages.ProductUpdated);
         }
     }
 }
